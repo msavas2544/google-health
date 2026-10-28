@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "google-health"
+dynamic = ["version"]
+description = "Python client for the Google Health API v4 – sync & async, webhooks, and a python-fitbit migration layer."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.9"
+authors = [{ name = "Orcai LLC" }]
+keywords = ["google health", "fitbit", "pixel watch", "health api", "wearables", "oauth"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Libraries",
+  "Typing :: Typed",
+  "Framework :: AsyncIO",
+]
+dependencies = ["httpx>=0.24,<1"]
+
+[project.optional-dependencies]
+webhooks = ["cryptography>=41"]
+google-auth = ["google-auth>=2.20", "requests>=2"]
+dev = ["pytest>=7", "pytest-asyncio>=0.21", "cryptography>=41", "ruff", "mypy"]
+
+[project.scripts]
+google-health = "google_health.cli:main"
+
+[project.urls]
+Documentation = "https://developers.google.com/health"
+
+[tool.hatch.version]
+path = "src/google_health/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/google_health"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["UP006", "UP007", "UP035", "UP045", "B008"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_ignores = false
+warn_return_any = false
