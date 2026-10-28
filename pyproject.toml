@@ -38,7 +38,10 @@ dev = ["pytest>=7", "pytest-asyncio>=0.21", "cryptography>=41", "ruff", "mypy"]
 google-health = "google_health.cli:main"
 
 [project.urls]
-Documentation = "https://developers.google.com/health"
+Homepage = "https://github.com/msavas2544/google-health"
+Repository = "https://github.com/msavas2544/google-health"
+Issues = "https://github.com/msavas2544/google-health/issues"
+Changelog = "https://github.com/msavas2544/google-health/blob/main/CHANGELOG.md"
 
 [tool.hatch.version]
 path = "src/google_health/_version.py"
