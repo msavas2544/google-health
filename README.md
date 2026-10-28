@@ -115,7 +115,7 @@ def health_webhook():
     result = receiver.handle(request.headers, request.get_data())
     for n in result.notifications:           # parsed, signature-verified
         enqueue_sync(n.health_user_id, n.data_type, n.operation, n.intervals)
-    return "", result.status_code            # 200 for the verification probe, 204 for data
+    return "", result.status_code            # 201 for the verification probe, 204 for data
 ```
 
 Register the endpoint, then (with the `MANUAL` policy) subscribe individual users:
@@ -153,15 +153,15 @@ client.legacy_user_id()      # old Fitbit encodedId → re-key your database
 
 | Kind | Types |
 |---|---|
-| interval | steps, distance, floors, altitude, active-energy-burned, basal-energy-burned, active-minutes, active-zone-minutes, sedentary-period, time-in-heart-rate-zone, swim-lengths-data, menstrual-period |
+| interval | steps, distance, activity-level, floors, altitude, active-energy-burned, basal-energy-burned, active-minutes, active-zone-minutes, sedentary-period, time-in-heart-rate-zone, swim-lengths-data, menstrual-period |
 | sample | heart-rate, heart-rate-variability, weight, height, body-fat, blood-glucose, oxygen-saturation, core-body-temperature, vo2-max, run-vo2-max, respiratory-rate-sleep-summary, moods, symptoms, ovulation-test |
-| daily | activity-level, daily-resting-heart-rate, daily-heart-rate-variability, daily-heart-rate-zones, daily-oxygen-saturation, daily-respiratory-rate, daily-sleep-temperature-derivations, daily-vo2-max |
+| daily | daily-resting-heart-rate, daily-heart-rate-variability, daily-heart-rate-zones, daily-oxygen-saturation, daily-respiratory-rate, daily-sleep-temperature-derivations, daily-vo2-max |
 | session | sleep, exercise, electrocardiogram, hydration-log, nutrition-log, irregular-rhythm-notification |
 | roll-up only | total-calories, calories-in-heart-rate-zone |
 
 ## Status
 
-Version 0.1, alpha. The request and response shapes were built from the official discovery document (revision 2026-10-27) and are covered by 41 unit tests on Python 3.9–3.13. Those tests run against mocked HTTP. Please open an issue if a live response differs.
+Version 0.1, alpha. The request and response shapes were built from the official discovery document (revision 2026-10-27) and are covered by 56 unit tests on Python 3.9–3.13. Those tests run against mocked HTTP. Please open an issue if a live response differs.
 
 This is a community project, not affiliated with or endorsed by Google. "Fitbit" and "Google Health" are trademarks of Google LLC.
 

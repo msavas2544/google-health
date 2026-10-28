@@ -56,7 +56,7 @@ def civil_literal(value: DateTimeLike) -> str:
 def duration(value: DurationLike) -> str:
     """Encode a protobuf ``Duration`` (``"3600s"``)."""
     if isinstance(value, str):
-        return value if value.endswith("s") else value + "s"
+        value = parse_window(value)
     if isinstance(value, dt.timedelta):
         seconds: float = value.total_seconds()
     else:
@@ -64,6 +64,22 @@ def duration(value: DurationLike) -> str:
     if seconds <= 0:
         raise ValueError("duration must be positive")
     return f"{int(seconds)}s" if seconds == int(seconds) else f"{seconds:.9f}".rstrip("0") + "s"
+
+
+_WINDOW_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*(s|sec|m|min|h|hr|d)?\s*$")
+_WINDOW_UNITS = {None: 1, "s": 1, "sec": 1, "m": 60, "min": 60, "h": 3600, "hr": 3600,
+                 "d": 86400}
+
+
+def parse_window(value: str) -> dt.timedelta:
+    """Parse ``"900s"``, ``"15m"``, ``"15min"``, ``"1h"`` or ``"1d"``."""
+    m = _WINDOW_RE.match(value)
+    if not m:
+        raise ValueError(f"invalid window {value!r}; use e.g. '900s', '15m', '1h'")
+    td = dt.timedelta(seconds=float(m.group(1)) * _WINDOW_UNITS[m.group(2)])
+    if td <= dt.timedelta(0):
+        raise ValueError("window must be positive")
+    return td
 
 
 _DUR_RE = re.compile(r"^(-?\d+(?:\.\d+)?)s$")

@@ -85,6 +85,10 @@ class Fitbit:
         **kwargs: Any,
     ) -> None:
         self.system = system
+        # python-fitbit accepted oauth2=..., requests_kwargs=..., timeout=...; keep only
+        # what HealthClient understands so old call sites don't break.
+        allowed = {"user", "project", "base_url", "timeout", "max_retries", "backoff", "http"}
+        kwargs = {k: v for k, v in kwargs.items() if k in allowed}
         if client is None:
             creds = OAuthCredentials(
                 access_token=access_token, refresh_token=refresh_token, client_id=client_id,
@@ -120,19 +124,32 @@ class Fitbit:
             return str(int(round(value)))
         return f"{value:.2f}".rstrip("0").rstrip(".") if value % 1 else str(int(value))
 
+    def _today(self) -> dt.date:
+        """'today' in the *user's* time zone (the legacy API's semantics)."""
+        try:
+            tz = self._user_tz()
+        except Exception:
+            tz = None
+        return dt.datetime.now(tz).date() if tz else dt.date.today()
+
+    def _day(self, value: Optional[Union[str, dt.date]]) -> dt.date:
+        if value is None or value == "today":
+            return self._today()
+        return to_date(value)
+
     def _date_range(self, base_date: Union[str, dt.date], period: Optional[str],
                     end_date: Optional[Union[str, dt.date]]) -> Tuple[dt.date, dt.date]:
         """Return an inclusive ``(first, last)`` range using legacy semantics."""
         if period and end_date:
             raise TypeError("Either end_date or period can be specified, not both")
         if end_date is not None:
-            return to_date(base_date), to_date(end_date)
+            return self._day(base_date), self._day(end_date)
         if period:
             if period not in _PERIODS:
                 raise ValueError(f"Period must be one of {sorted(_PERIODS)}")
-            last = to_date(base_date)
+            last = self._day(base_date)
             return last - dt.timedelta(days=_PERIODS[period] - 1), last
-        d = to_date(base_date)
+        d = self._day(base_date)
         return d, d
 
     def _user_tz(self) -> Union[dt.tzinfo, None]:
@@ -262,13 +279,17 @@ class Fitbit:
         if (start_time is None) != (end_time is None):
             raise TypeError("You must provide both the end and start time or neither")
         r, dtype, kind, family = self._resource(resource)
-        day = to_date(base_date)
+        day = self._day(base_date)
         tz = self._user_tz() or dt.timezone.utc
         st = _parse_time(start_time) if start_time is not None else dt.time(0, 0)
         local_start = dt.datetime.combine(day, st).replace(tzinfo=tz)
         if end_time is not None:
             local_end = dt.datetime.combine(day, _parse_time(end_time)).replace(tzinfo=tz)
-            local_end += dt.timedelta(minutes=1)  # legacy end_time is inclusive
+            # Legacy end_time is inclusive: extend to the end of the bucket containing it.
+            step_td = dt.timedelta(seconds=_DETAIL[detail_level])
+            if local_end < local_start:
+                raise ValueError("end_time must not be before start_time")
+            local_end = local_start + step_td * ((local_end - local_start) // step_td + 1)
         else:
             local_end = dt.datetime.combine(day + dt.timedelta(days=1), dt.time(0)).replace(
                 tzinfo=tz)
@@ -301,7 +322,7 @@ class Fitbit:
     # -- sleep / body ------------------------------------------------------------------
     def get_sleep(self, date: Union[str, dt.date]) -> Dict[str, Any]:
         """Sleep sessions that *ended* on ``date`` (legacy "dateOfSleep" semantics)."""
-        day = to_date(date)
+        day = self._day(date)
         sessions = []
         for p in self.client.data_points.list(DataType.SLEEP, day, day + dt.timedelta(days=1),
                                               civil=True):
@@ -362,10 +383,10 @@ class Fitbit:
         out.sort(key=lambda x: (x["date"] or "", x["time"] or ""))
         return {"fat": out}
 
-    def activities(self, date: Union[str, dt.date] = "today",
+    def activities(self, date: Optional[Union[str, dt.date]] = None,
                    user_id: Optional[str] = None) -> Dict[str, Any]:
         """Daily activity summary (``GET /activities/date/{date}.json`` subset)."""
-        day = to_date(date)
+        day = self._day(date)
         nxt = day + dt.timedelta(days=1)
 
         def one(dtype: DataType) -> Optional[float]:
@@ -423,6 +444,8 @@ def _source(p: Dict[str, Any]) -> str:
 
 _STAGE_KEYS = {"DEEP": "deep", "LIGHT": "light", "REM": "rem", "AWAKE": "wake",
                "ASLEEP": "asleep", "RESTLESS": "restless"}
+# Legacy "classic" sleep logs used asleep / restless / awake.
+_CLASSIC_KEYS = {"AWAKE": "awake", "ASLEEP": "asleep", "RESTLESS": "restless"}
 
 
 def _legacy_sleep(p: Dict[str, Any], day: dt.date) -> Dict[str, Any]:
@@ -435,8 +458,9 @@ def _legacy_sleep(p: Dict[str, Any], day: dt.date) -> Dict[str, Any]:
     ps, pe = parse_timestamp(iv.get("startTime")), parse_timestamp(iv.get("endTime"))
     duration_ms = int((pe - ps).total_seconds() * 1000) if ps and pe else 0
     stages = {}
+    keys = _STAGE_KEYS if s.get("type") == "STAGES" else _CLASSIC_KEYS
     for st in summ.get("stagesSummary") or []:
-        k = _STAGE_KEYS.get(str(st.get("type")))
+        k = keys.get(str(st.get("type")))
         if k:
             stages[k] = {"count": int(st.get("count", 0) or 0),
                          "minutes": int(st.get("minutes", 0) or 0)}

@@ -256,13 +256,20 @@ class SignatureVerifier:
                 return
             if force and age < 60:  # don't hammer gstatic on bad signatures
                 return
-            self._keys = parse_keyset(self._fetch(self.keyset_url))
+            try:
+                self._keys = parse_keyset(self._fetch(self.keyset_url))
+            except Exception as exc:
+                # Keep serving with cached keys if gstatic is briefly unreachable.
+                self._fetched_at = time.time() - self.ttl + 60  # retry in a minute
+                if not self._keys:
+                    raise SignatureError(f"could not fetch Google keyset: {exc}") from exc
+                return
             self._fetched_at = time.time()
 
     def _candidates(self, sig: bytes) -> List[Tuple[_Key, bytes, bytes]]:
         out = []
         for k in self._keys:
-            if k.prefix in ("TINK", "LEGACY") and len(sig) > 5:
+            if k.prefix in ("TINK", "LEGACY") and len(sig) > 5 and 0 <= k.key_id < 2**32:
                 version = b"\x01" if k.prefix == "TINK" else b"\x00"
                 expected = version + k.key_id.to_bytes(4, "big")
                 if sig[:5] == expected:
@@ -375,7 +382,8 @@ class WebhookReceiver:
         if not self.authorized(_header(headers, "Authorization")):
             return WebhookResult(401, error="unauthorized")
         if is_verification(body):
-            return WebhookResult(200, verification=True)
+            # The subscribers.create spec expects "201 Created" for the authorized probe.
+            return WebhookResult(201, verification=True)
         if self.verify_signatures and self.verifier is not None:
             try:
                 self.verifier.verify(body, _header(headers, SIGNATURE_HEADER) or "")

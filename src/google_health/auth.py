@@ -46,8 +46,11 @@ class Credentials:
     async def atoken(self, http: httpx.AsyncClient) -> str:  # pragma: no cover - interface
         raise NotImplementedError
 
-    def invalidate(self) -> None:
-        """Called after a 401 so the next :meth:`token` call refreshes."""
+    def invalidate(self, failed_token: Optional[str] = None) -> None:
+        """Called after a 401 so the next :meth:`token` call refreshes.
+
+        ``failed_token`` is the token that was rejected; implementations should
+        ignore the call if they have already moved on to a newer token."""
 
 
 class StaticToken(Credentials):
@@ -83,6 +86,7 @@ class OAuthCredentials(Credentials):
     def __post_init__(self) -> None:
         self._lock = threading.Lock()
         self._alock: Optional[asyncio.Lock] = None
+        self._alock_loop: Any = None
 
     # -- state ---------------------------------------------------------------
     @property
@@ -93,8 +97,10 @@ class OAuthCredentials(Credentials):
             return False
         return time.time() >= self.expires_at - EXPIRY_SKEW
 
-    def invalidate(self) -> None:
-        self.expires_at = 0
+    def invalidate(self, failed_token: Optional[str] = None) -> None:
+        with self._lock:
+            if failed_token is None or failed_token == self.access_token:
+                self.expires_at = 0
 
     def _refresh_request(self) -> Dict[str, str]:
         if not (self.refresh_token and self.client_id):
@@ -149,8 +155,9 @@ class OAuthCredentials(Credentials):
         self._apply(_token_payload(resp))
 
     async def atoken(self, http: httpx.AsyncClient) -> str:
-        if self._alock is None:
-            self._alock = asyncio.Lock()
+        loop = asyncio.get_running_loop()
+        if self._alock is None or self._alock_loop is not loop:
+            self._alock, self._alock_loop = asyncio.Lock(), loop
         async with self._alock:
             if self.expired:
                 await self.arefresh(http)
@@ -184,9 +191,16 @@ class OAuthCredentials(Credentials):
         """Write the token to ``path`` with 0600 permissions."""
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(str(p), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as fh:
-            json.dump(self.to_dict(), fh, indent=2)
+        tmp = p.with_name(f".{p.name}.{os.getpid()}.tmp")
+        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            with os.fdopen(fd, "w") as fh:
+                json.dump(self.to_dict(), fh, indent=2)
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, p)  # atomic: readers never see a half-written token
+        finally:
+            if tmp.exists():
+                tmp.unlink()
 
     @classmethod
     def load(cls, path: Union[str, Path], *, autosave: bool = True) -> OAuthCredentials:
@@ -219,9 +233,10 @@ class GoogleAuthCredentials(Credentials):
     async def atoken(self, http: httpx.AsyncClient) -> str:
         return await asyncio.get_running_loop().run_in_executor(None, self._ensure)
 
-    def invalidate(self) -> None:
+    def invalidate(self, failed_token: Optional[str] = None) -> None:
         try:
-            self.credentials.token = None
+            if failed_token is None or failed_token == self.credentials.token:
+                self.credentials.token = None
         except Exception:  # pragma: no cover - defensive
             pass
 

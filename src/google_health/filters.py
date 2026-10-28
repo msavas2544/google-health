@@ -8,10 +8,20 @@ never have to remember whether it is ``steps.interval.start_time`` or
 
 from __future__ import annotations
 
+import datetime as dt
+import re
 from typing import Optional, Union
 
 from ._time import DateTimeLike, civil_literal, rfc3339, to_date
 from .types import DataKind, DataType
+
+
+def _is_absolute(v: Optional[DateTimeLike]) -> bool:
+    if isinstance(v, dt.datetime):
+        return v.tzinfo is not None
+    if isinstance(v, str):
+        return bool(re.search(r"(Z|[+-]\d{2}:?\d{2})$", v.strip())) and "T" in v
+    return False
 
 
 def _clause(field: str, start: Optional[str], end: Optional[str]) -> str:
@@ -75,6 +85,12 @@ def time_range_filter(
         return _clause("electrocardiogram.interval.start_time", s, None)
     # Other sessions (exercise, hydration-log, nutrition-log, ...) only support
     # filtering on civil start time, so bounds are always sent as wall-clock values.
+    # Refuse absolute instants: silently reading UTC as local time shifts the window.
+    for v in (start, end):
+        if _is_absolute(v):
+            raise ValueError(
+                f"{dtype.value} can only be filtered by local (civil) start time; pass naive "
+                "datetimes/dates or 'YYYY-MM-DD[THH:MM:SS]' strings without an offset")
     s = civil_literal(start) if start is not None else None
     e = civil_literal(end) if end is not None else None
     return _clause(f"{name}.interval.civil_start_time", s, e)

@@ -139,7 +139,7 @@ def test_receiver_flow() -> None:
                          verifier=SignatureVerifier(keyset={"key": [entry]}))
     probe = b'{"type": "verification"}'
     assert is_verification(probe)
-    assert rx.handle({"authorization": "Bearer new"}, probe).status_code == 200
+    assert rx.handle({"authorization": "Bearer new"}, probe).status_code == 201
     assert rx.handle({}, probe).status_code == 401
     assert rx.handle({"Authorization": "Bearer wrong"}, BODY).status_code == 401
 

@@ -29,7 +29,7 @@ from .summaries import DailyValue, WindowValue, daily_value, window_value
 def _backoff(attempt: int, base: float, retry_after: Optional[str]) -> float:
     if retry_after:
         try:
-            return min(float(retry_after), 60.0)
+            return max(0.0, min(float(retry_after), 60.0))
         except ValueError:
             pass
     return min(base * (2 ** attempt), 30.0) * (0.5 + random.random() / 2)
@@ -135,7 +135,7 @@ class HealthClient(_Base):
             )
             if resp.status_code == 401 and not reauthed:
                 reauthed = True
-                self.credentials.invalidate()
+                self.credentials.invalidate(token)
                 continue
             if resp.status_code < 400:
                 return _decode(resp, call.raw)
@@ -146,6 +146,8 @@ class HealthClient(_Base):
             raise _error(resp)
 
     def paginate(self, paged: PagedCall) -> Iterator[Dict[str, Any]]:
+        if paged.limit is not None and paged.limit <= 0:
+            return
         call = paged.call
         seen = 0
         while True:

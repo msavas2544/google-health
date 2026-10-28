@@ -191,8 +191,15 @@ def patch_data_point(user: str, data_type: DataTypeLike, point_id: str,
     return Call("PATCH", name, None, body, idempotent=True)
 
 
+MAX_BATCH_DELETE = 10_000
+
+
 def batch_delete(user: str, data_type: DataTypeLike, ids: Iterable[str]) -> Call:
     names = [data_point_name(user, data_type, i) for i in ids]
+    if not names:
+        raise ValueError("no data point ids given")
+    if len(names) > MAX_BATCH_DELETE:
+        raise ValueError(f"batchDelete accepts at most {MAX_BATCH_DELETE} names per call")
     return Call("POST", f"{data_type_parent(user, data_type)}/dataPoints:batchDelete",
                 None, {"names": names}, idempotent=True)
 
@@ -208,7 +215,9 @@ def export_exercise_tcx(user: str, exercise_id: str, partial_data: bool) -> Call
 def wrap_payload(data_type: DataTypeLike, data_point: Dict[str, Any]) -> Dict[str, Any]:
     """Accept either a full DataPoint (``{"steps": {...}}``) or just the inner payload."""
     key = DataType(data_type).camel
-    if key in data_point:
+    # Some inner payloads have a scalar field named like the type (e.g. VO2Max.vo2Max),
+    # so only treat the dict as wrapped when that key holds an object.
+    if isinstance(data_point.get(key), dict):
         return data_point
     return {key: data_point}
 
@@ -286,9 +295,7 @@ def _window_timedelta(window: _time.DurationLike) -> dt.timedelta:
         return window
     if isinstance(window, (int, float)):
         return dt.timedelta(seconds=window)
-    td = _time.parse_duration(window if window.endswith("s") else window + "s")
-    assert td is not None
-    return td
+    return _time.parse_window(window)
 
 
 # --------------------------------------------------------------------------- subscribers

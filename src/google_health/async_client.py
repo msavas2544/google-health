@@ -75,7 +75,7 @@ class AsyncHealthClient(_Base):
             )
             if resp.status_code == 401 and not reauthed:
                 reauthed = True
-                self.credentials.invalidate()
+                self.credentials.invalidate(token)
                 continue
             if resp.status_code < 400:
                 return _decode(resp, call.raw)
@@ -86,6 +86,8 @@ class AsyncHealthClient(_Base):
             raise _error(resp)
 
     async def paginate(self, paged: PagedCall) -> AsyncIterator[Dict[str, Any]]:
+        if paged.limit is not None and paged.limit <= 0:
+            return
         call = paged.call
         seen = 0
         while True:

@@ -102,7 +102,7 @@ DATA_KINDS: Dict[DataType, DataKind] = {
     DataType.ACTIVE_ENERGY_BURNED: _I,
     DataType.ACTIVE_MINUTES: _I,
     DataType.ACTIVE_ZONE_MINUTES: _I,
-    DataType.ACTIVITY_LEVEL: _D,
+    DataType.ACTIVITY_LEVEL: _I,
     DataType.ALTITUDE: _I,
     DataType.BASAL_ENERGY_BURNED: _I,
     DataType.BLOOD_GLUCOSE: _S,
