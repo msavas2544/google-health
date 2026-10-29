@@ -27,7 +27,8 @@ pip install "google-health[google-auth]"  # + use google.auth / service-account 
 ```bash
 export GOOGLE_HEALTH_CLIENT_ID=...apps.googleusercontent.com
 export GOOGLE_HEALTH_CLIENT_SECRET=...
-google-health login            # opens the browser, saves ~/.config/google-health/token.json
+google-health login --client-secrets client_secret_xxx.json   # JSON from the Cloud console
+# or: export GOOGLE_HEALTH_CLIENT_ID=... GOOGLE_HEALTH_CLIENT_SECRET=... && google-health login
 google-health whoami           # Google Health user id + legacy Fitbit user id
 google-health daily steps --days 7
 ```
@@ -74,6 +75,22 @@ async with AsyncHealthClient(creds) as client:
     async for p in client.data_points.list("heart-rate", start, end):
         ...
     days = await client.daily("distance", "2026-10-01", "2026-10-29")
+```
+
+## Account linking (read this first)
+
+Google Health only returns data for accounts that have been **linked in the Google Health
+mobile app**. Until the user installs the app, signs in with the same Google Account and
+finishes onboarding, every call fails with `400 FAILED_PRECONDITION: The account is not linked
+to Google Health`. The library raises this as `AccountNotLinked` (a `FailedPrecondition`
+subclass) so you can show the user a "set up Google Health on your phone" screen:
+
+```python
+from google_health import AccountNotLinked
+try:
+    identity = client.identity()
+except AccountNotLinked:
+    ...  # tell the user to open the Google Health app and sign in
 ```
 
 ## Authentication
@@ -161,7 +178,7 @@ client.legacy_user_id()      # old Fitbit encodedId → re-key your database
 
 ## Status
 
-Version 0.1, alpha. The request and response shapes were built from the official discovery document (revision 2026-10-27) and are covered by 56 unit tests on Python 3.9–3.13. Those tests run against mocked HTTP. Please open an issue if a live response differs.
+Version 0.1, alpha. The request and response shapes were built from the official discovery document (revision 2026-10-27) and are covered by 58 unit tests on Python 3.9–3.13 against mocked HTTP. The OAuth flow, `getIdentity`, `dataPoints.list` and `dailyRollUp` have also been exercised against the live API with a real account (October 2026). Please open an issue if a live response differs for other data types.
 
 This is a community project, not affiliated with or endorsed by Google. "Fitbit" and "Google Health" are trademarks of Google LLC.
 
