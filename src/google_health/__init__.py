@@ -13,6 +13,7 @@ from .auth import (
 )
 from .client import HealthClient
 from .errors import (
+    AccountNotLinked,
     AlreadyExists,
     APIError,
     AuthError,
@@ -56,6 +57,7 @@ __all__ = [
     "PermissionDenied",
     "NotFound",
     "AlreadyExists",
+    "AccountNotLinked",
     "FailedPrecondition",
     "RateLimited",
     "ServerError",

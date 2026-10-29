@@ -65,6 +65,18 @@ class FailedPrecondition(APIError):
     """E.g. webhook endpoint verification failed during subscriber creation."""
 
 
+class AccountNotLinked(FailedPrecondition):
+    """The user has not linked their Google Account to Google Health yet.
+
+    Every user must open the Google Health mobile app, sign in with the same
+    Google Account and finish onboarding once; only then does the API return data.
+    """
+
+    HINT = ("The Google Account is not linked to Google Health. Ask the user to install the "
+            "Google Health app on their phone, sign in with the same account and complete the "
+            "setup, then try again.")
+
+
 class RateLimited(APIError):
     pass
 
@@ -102,5 +114,8 @@ def from_response(http_status: int, body: Any) -> APIError:
     cls = _BY_STATUS.get(status or "") or _BY_HTTP.get(http_status)
     if cls is None:
         cls = ServerError if http_status >= 500 else APIError
+    if cls is FailedPrecondition and "not linked" in str(message).lower():
+        return AccountNotLinked(f"{message} {AccountNotLinked.HINT}", http_status=http_status,
+                                status=status, details=details, response_body=body)
     return cls(str(message), http_status=http_status, status=status, details=details,
                response_body=body)

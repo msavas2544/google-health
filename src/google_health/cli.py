@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from .auth import OAuthCredentials, OAuthFlow
+from .auth import OAuthCredentials, OAuthFlow, load_client_secrets
 from .client import HealthClient
 from .errors import GoogleHealthError
 from .types import DataType, Scope
@@ -29,8 +29,11 @@ def _client(args: argparse.Namespace) -> HealthClient:
 def cmd_login(args: argparse.Namespace) -> None:
     client_id = args.client_id or os.environ.get("GOOGLE_HEALTH_CLIENT_ID")
     secret = args.client_secret or os.environ.get("GOOGLE_HEALTH_CLIENT_SECRET")
+    secrets_file = args.client_secrets or os.environ.get("GOOGLE_HEALTH_CLIENT_SECRETS")
+    if secrets_file:
+        client_id, secret = load_client_secrets(secrets_file)
     if not client_id:
-        sys.exit("--client-id (or GOOGLE_HEALTH_CLIENT_ID) is required")
+        sys.exit("--client-secrets FILE, or --client-id (or GOOGLE_HEALTH_CLIENT_ID) is required")
     scopes = args.scope or list(Scope.READ_COMMON)
     flow = OAuthFlow(client_id, secret, scopes)
     creds = flow.run_local_server(port=args.port, open_browser=not args.no_browser,
@@ -52,6 +55,9 @@ def cmd_daily(args: argparse.Namespace) -> None:
     if args.json:
         print(json.dumps([{"date": r.date.isoformat(), "value": r.value} for r in rows], indent=2))
         return
+    if not rows:
+        print(f"No {args.data_type} data between {start} and {end} (end exclusive).",
+              file=sys.stderr)
     for r in rows:
         print(f"{r.date}  {'' if r.value is None else round(r.value, 2)}")
 
@@ -72,6 +78,8 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("login", help="authorize via browser and save a token")
     s.add_argument("--client-id")
     s.add_argument("--client-secret")
+    s.add_argument("--client-secrets", metavar="FILE",
+                   help="client_secret_*.json downloaded from Google Cloud console")
     s.add_argument("--scope", action="append", help="repeatable; default: common read scopes")
     s.add_argument("--port", type=int, default=0)
     s.add_argument("--no-browser", action="store_true")
