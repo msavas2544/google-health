@@ -130,3 +130,31 @@ def test_classic_sleep_keys() -> None:
     s = _legacy_sleep({"sleep": {"type": "CLASSIC", "summary": {"stagesSummary": [
         {"type": "AWAKE", "count": "2", "minutes": "10"}]}}}, dt.date(2026, 10, 28))
     assert s["levels"]["summary"] == {"awake": {"count": 2, "minutes": 10}}
+
+
+def test_load_client_secrets(tmp_path) -> None:
+    import json as _json
+
+    from google_health.auth import load_client_secrets
+
+    p = tmp_path / "client_secret.json"
+    p.write_text(_json.dumps({"installed": {"client_id": "abc.apps.googleusercontent.com",
+                                            "client_secret": "GOCSPX-x", "project_id": "p"}}))
+    assert load_client_secrets(p) == ("abc.apps.googleusercontent.com", "GOCSPX-x")
+    p.write_text(_json.dumps({"web": {"client_id": "w"}}))
+    assert load_client_secrets(p) == ("w", None)
+    p.write_text("{}")
+    from google_health.errors import AuthError
+    with pytest.raises(AuthError):
+        load_client_secrets(p)
+
+
+def test_account_not_linked_mapping(api, client) -> None:
+    from google_health import AccountNotLinked, FailedPrecondition
+    api.add("GET", "/identity", lambda r: httpx.Response(400, json={"error": {
+        "code": 400, "status": "FAILED_PRECONDITION",
+        "message": "The account is not linked to Google Health."}}))
+    with pytest.raises(AccountNotLinked) as ei:
+        client.identity()
+    assert isinstance(ei.value, FailedPrecondition)
+    assert "Google Health app" in str(ei.value)
