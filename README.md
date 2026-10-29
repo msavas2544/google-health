@@ -1,6 +1,6 @@
 # google-health
 
-A Python client for the **Google Health API v4**, which replaces the Fitbit Web API. It also includes a migration layer for `python-fitbit` users.
+A Python client for the **Google Health API v4**, which replaces the Fitbit Web API. It also includes migration layers for `python-fitbit` users and for apps built on the Google Fit REST API.
 
 > The legacy Fitbit Web API and its OAuth endpoints are scheduled to be **turned off on 2 November 2026**. After that date, apps still using it will stop receiving Fitbit / Pixel Watch data.
 
@@ -12,6 +12,7 @@ A Python client for the **Google Health API v4**, which replaces the Fitbit Web 
 * **OAuth 2.0** with PKCE, automatic token refresh, refresh-token rotation support and file persistence. A one-command `google-health login` handles local scripts.
 * **Webhooks**: one class handles the endpoint-verification handshake, checks the shared secret, verifies Google's ECDSA signature against the published Tink keyset (with key rotation) and parses batched notifications.
 * **A `python-fitbit` compatibility layer**: change one import and keep `time_series`, `intraday_time_series`, `get_sleep`, `get_bodyweight`, `user_profile_get`... returning the legacy JSON shapes.
+* **A Google Fit compatibility layer**: `dataset:aggregate`, `dataSources`, `datasets.get` and `sessions.list` answered from Google Health data in the legacy Fit JSON shapes, behind the same `users().dataset().aggregate(...).execute()` call chain as `googleapiclient`.
 * **Typed and robust**: a typed `DataType` enum covers all 42 types, errors map to exception classes, retries use backoff and honour `Retry-After`, and a 401 triggers one refresh-and-retry.
 
 ## Install
@@ -164,6 +165,29 @@ client.legacy_user_id()      # old Fitbit encodedId → re-key your database
 
 [MIGRATION.md](MIGRATION.md) covers the full mapping table, the semantic differences, and a checklist for the 2 November 2026 cut-over.
 
+## Migrating from the Google Fit REST API
+
+The Google Fit APIs are deprecated in 2026 and have not accepted new sign-ups since 1 May 2024. Google points server-side apps to the Google Health API. Code that used `googleapiclient` can swap the service object:
+
+```python
+from google_health import HealthClient, OAuthCredentials
+from google_health.googlefit_compat import GoogleFit
+
+# service = build("fitness", "v1", credentials=creds)
+service = GoogleFit(HealthClient(OAuthCredentials.load("token.json")))
+
+resp = service.users().dataset().aggregate(userId="me", body={
+    "aggregateBy": [{"dataTypeName": "com.google.step_count.delta"}],
+    "bucketByTime": {"period": {"type": "day", "value": 1, "timeZoneId": "Europe/Istanbul"}},
+    "startTimeMillis": start_ms, "endTimeMillis": end_ms,
+}).execute()
+for bucket in resp["bucket"]:
+    for point in bucket["dataset"][0]["point"]:
+        print(bucket["startTimeMillis"], point["value"][0]["intVal"])
+```
+
+Supported types are steps, distance, calories, move minutes, heart points, heart rate, weight, height, body fat, SpO₂, blood glucose, hydration, nutrition, activity segments and sleep segments. [MIGRATION.md](MIGRATION.md#google-fit-rest-api) lists the mapping, units and what is not covered. The layer was written from the published Fit and Google Health API references and is tested against mocked HTTP. It has not been compared with live Fit data, so please open an issue if numbers differ.
+
 ## Data types
 
 `DataType` covers all 42 types. Each one carries its `kind`, which is `INTERVAL`, `SAMPLE`, `DAILY`, `SESSION` or `ROLLUP_ONLY`:
@@ -178,7 +202,7 @@ client.legacy_user_id()      # old Fitbit encodedId → re-key your database
 
 ## Status
 
-Version 0.1, alpha. The request and response shapes were built from the official discovery document (revision 2026-10-27) and are covered by 58 unit tests on Python 3.9–3.13 against mocked HTTP. The OAuth flow, `getIdentity`, `dataPoints.list` and `dailyRollUp` have also been exercised against the live API with a real account (October 2026). Please open an issue if a live response differs for other data types.
+Version 0.2, alpha. The request and response shapes were built from the official discovery document (revision 2026-10-27) and are covered by 77 unit tests on Python 3.9–3.13 against mocked HTTP. The OAuth flow, `getIdentity`, `dataPoints.list` and `dailyRollUp` have also been exercised against the live API with a real account (October 2026). Please open an issue if a live response differs for other data types.
 
 This is a community project, not affiliated with or endorsed by Google. "Fitbit" and "Google Health" are trademarks of Google LLC.
 

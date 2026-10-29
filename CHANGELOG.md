@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0 — 2026-10-29
+
+- New `googlefit_compat` module: a Google Fit REST API look-alike backed by the Google Health API. Covers `dataset:aggregate` (time, period, session, activity-segment and activity-type buckets), `dataSources.list`/`get`, `dataSources.datasets.get` and `sessions.list`, with a `googleapiclient`-style `users()...execute()` chain.
+- 15 Fit data types mapped, with unit conversions (mm → m, g → kg, mg/dL → mmol/L, ml → l) and nanosecond/millisecond timestamps.
+- MIGRATION.md: Google Fit section with the mapping table and known gaps.
+
 ## 0.1.1 — 2026-10-29
 
 - `login --client-secrets FILE` accepts the `client_secret_*.json` downloaded from the Google Cloud console.

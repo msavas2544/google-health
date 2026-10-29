@@ -48,3 +48,63 @@ These calls are not covered by the compat layer, so use the native client for th
 * **Integers come back as strings** (`"countSum": "8421"`, int64 in JSON). The `summaries` helpers and `client.daily()` convert them for you.
 * **Rate limits** are Google Cloud quotas, not the Fitbit 150 requests per hour per user. 429 responses are retried with backoff automatically.
 * **Roll-up limits:** 14 days for `heart-rate`, `active-minutes`, `total-calories` and `calories-in-heart-rate-zone`, and 90 days for everything else. The client splits longer ranges for you.
+
+# Google Fit REST API
+
+The Google Fit APIs (Android and REST) are deprecated in 2026. New sign-ups closed on 1 May 2024, and Google recommends the Google Health API for server-side access. `google_health.googlefit_compat.GoogleFit` answers the read calls most Fit integrations use and returns the Fit JSON shapes.
+
+## Checklist
+
+1. **Enable the Google Health API** in your Cloud project and request its scopes (`Scope.READ_COMMON` covers activity, body metrics and sleep). Fit scopes (`fitness.activity.read`, ...) and Fit tokens do not work.
+2. **Re-consent every user** through Google OAuth (`OAuthFlow`). The user also needs the Google Health app set up on their phone, otherwise calls fail with `AccountNotLinked`.
+3. **Swap the service object**: replace `build("fitness", "v1", ...)` with `GoogleFit(HealthClient(credentials))`. The `users().dataset().aggregate(...)`, `users().dataSources().list/get(...)`, `users().dataSources().datasets().get(...)` and `users().sessions().list(...)` chains and `.execute()` keep working. You can also call `aggregate(body)`, `get_dataset(...)` and `list_sessions(...)` directly.
+4. **Check the unsupported list** below and move those parts to the native client.
+
+## Data type mapping
+
+| Fit data type | Google Health data type | Aggregate result | Unit / notes |
+|---|---|---|---|
+| `com.google.step_count.delta` | `steps` | same type, `intVal` | steps |
+| `com.google.distance.delta` | `distance` | same type, `fpVal` | metres (from mm) |
+| `com.google.calories.expended` | `total-calories` | same type, `fpVal` | kcal; datasets come from 15-minute roll-up windows |
+| `com.google.active_minutes` | `active-minutes` | same type, `intVal` | minutes, all activity levels summed; datasets from roll-up windows |
+| `com.google.heart_minutes` | `active-zone-minutes` | `heart_minutes.summary` (intensity, duration) | Active Zone Minutes; cardio and peak minutes count double, like Heart Points |
+| `com.google.heart_rate.bpm` | `heart-rate` | `heart_rate.summary` (avg, max, min) | bpm |
+| `com.google.weight` | `weight` | `weight.summary` (avg, max, min) | kg |
+| `com.google.height` | `height` | `height.summary` | m |
+| `com.google.body.fat.percentage` | `body-fat` | `body.fat.percentage.summary` | % |
+| `com.google.oxygen_saturation` | `oxygen-saturation` | `oxygen_saturation.summary` (avg, max, min) | %; only the first field is filled |
+| `com.google.blood_glucose` | `blood-glucose` | `blood_glucose.summary` (avg, max, min) | mmol/L (mg/dL ÷ 18.016); only the first field is filled |
+| `com.google.hydration` | `hydration-log` | same type, `fpVal` | litres |
+| `com.google.nutrition` | `nutrition-log` | `nutrition.summary` (nutrients map, meal_type) | `calories`, `fat.*`, `carbs.total`, `protein`, `sugar`, `dietary_fiber` in g; `sodium`, `potassium`, `cholesterol`, `calcium`, `iron`, `vitamin_c` in mg |
+| `com.google.activity.segment` | `exercise` | `activity.summary` (activity, duration ms, num_segments) | Exercise types mapped to Fit activity integers; unmapped types become 108 (other) |
+| `com.google.sleep.segment` | `sleep` stages | not aggregatable | 1 awake/restless, 2 sleep, 3 out of bed, 4 light, 5 deep, 6 REM |
+
+Data source ids such as `derived:com.google.step_count.delta:com.google.android.gms:estimated_steps` are accepted; only the data type part is used.
+
+## Requests
+
+| Fit call | How it is answered |
+|---|---|
+| `dataset:aggregate` + `bucketByTime.durationMillis` | `dataPoints:rollUp` with that window (one call per run of equal-length buckets) |
+| `dataset:aggregate` + `bucketByTime.period` (day, week, month) | Buckets stepped in civil time of `timeZoneId` (UTC if omitted), DST-aware |
+| `bucketBySession`, `bucketByActivitySegment` | Exercise (and, for sessions, sleep) intervals become the buckets |
+| `bucketByActivityType` | Exercises grouped by Fit activity; additive types only (steps, distance, calories, minutes, hydration, nutrition) |
+| `dataSources.list` / `get` | A synthetic derived source per supported type, with Fit field descriptors |
+| `dataSources.datasets.get` | `dataPoints.list` converted point by point, sorted oldest first; `limit` keeps the newest points |
+| `sessions.list` | `exercise` and `sleep` data points (sleep as activity type 72) |
+
+## Not covered
+
+* Writes: `dataSources.create`, `datasets.patch`, `sessions.update` and deletes. Use `client.data_points.create(...)`.
+* Data types with no Google Health equivalent here: `calories.bmr`, `speed`, `step_count.cadence`, cycling cadence and wheel speed, `power.sample`, location samples and bounding boxes, `blood_pressure`, `body.temperature`, and the cycle-tracking types (`menstruation`, `cervical_*`, `ovulation_test`, `vaginal_spotting`).
+* `deletedSession`, `includeDeleted` and change-tracking fields (`modifiedTimeMillis` is filled from `updateTime` where available).
+* Pagination tokens. `datasets.get` and `sessions.list` return everything in the range in one response.
+* Raw multi-field values for SpO₂ and blood glucose (oxygen flow, specimen source and similar fields).
+
+## Semantic differences
+
+* **Aggregation and de-duplication** come from the Google Health API, so totals can differ from what Fit reported for the same day.
+* **Time units.** Fit uses milliseconds for buckets and sessions, and nanoseconds for points. The layer converts with integer arithmetic, and all of these are returned as strings, like Fit.
+* **Roll-up limits.** One roll-up window cannot exceed 14 days for heart rate, active minutes and calories, or 90 days for the rest, so `period: month` fails for those types.
+* **Not validated against live Fit data.** The author had no Fit account with data. The shapes follow the published references and the mocked tests.

@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "google-health"
 dynamic = ["version"]
-description = "Python client for the Google Health API v4 – sync & async, webhooks, and a python-fitbit migration layer."
+description = "Python client for the Google Health API v4 – sync & async, webhooks, and migration layers for python-fitbit and the Google Fit REST API."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.9"
 authors = [{ name = "Orcai LLC" }]
-keywords = ["google health", "fitbit", "pixel watch", "health api", "wearables", "oauth"]
+keywords = ["google health", "fitbit", "google fit", "google fit migration", "pixel watch", "health api", "wearables", "oauth"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
